@@ -9,7 +9,7 @@
 #include "video_compare.h"
 
 #ifdef _WIN32
-#include <Windows.h>
+#include <windows.h>
 
 // Credits to Mircea Neacsu, https://github.com/neacsum/utf8
 char** get_argv(int* argc, char** argv) {

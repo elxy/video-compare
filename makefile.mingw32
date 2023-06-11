@@ -1,0 +1,78 @@
+FFMPEG_VERSION = 6.0
+URL_FFMPEG = "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"
+
+ffmpeg_source:
+	@echo "Downloading ffmpeg..."
+	 if ! [ -e ffmpeg-${FFMPEG_VERSION}.tar.xz ]; then wget --quiet -c $(URL_FFMPEG) -O ffmpeg-${FFMPEG_VERSION}.tar.xz; fi; \
+	 if ! [ -e ffmpeg-${FFMPEG_VERSION} ]; then tar -xf ffmpeg-${FFMPEG_VERSION}.tar.xz; fi
+
+ffmpeg_lib: ffmpeg_source
+	@echo "Compiling ffmpeg..."
+	@cd ffmpeg-${FFMPEG_VERSION}; \
+	 ./configure \
+		--arch=x86_64 \
+		--target-os=mingw32 \
+		--cross-prefix=x86_64-w64-mingw32- \
+		--prefix=build \
+		--pkg-config-flags="--static" \
+		--enable-gpl \
+		--enable-nonfree \
+		--enable-pic \
+		--enable-postproc \
+		--enable-static; \
+	 make -j; \
+	 make install
+
+SDL2_VERSION = 2.26.5
+SDL2_TTF_VERSION = 2.20.2
+URL_SDL2 = "https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-devel-${SDL2_VERSION}-mingw.tar.gz"
+URL_SDL2_TTF = "https://github.com/libsdl-org/SDL_ttf/releases/download/release-${SDL2_TTF_VERSION}/SDL2_ttf-devel-${SDL2_TTF_VERSION}-mingw.tar.gz"
+
+sdl2_lib:
+	@echo "Downloading sdl2 and sdl2 ttf..."
+	 if ! [ -e SDL2-devel-${SDL2_VERSION}-mingw.tar.gz ]; then wget --quiet -c $(URL_SDL2) -O SDL2-devel-${SDL2_VERSION}-mingw.tar.gz; fi; \
+	 if ! [ -e SDL2-${SDL2_VERSION} ]; then tar -xf SDL2-devel-${SDL2_VERSION}.tar.gz; fi; \
+	 if ! [ -e SDL2-devel-${SDL2_TTF_VERSION}-mingw.tar.gz ]; then wget --quiet -c $(URL_SDL2_TTF) -O SDL2-devel-${SDL2_TTF_VERSION}-mingw.tar.gz; fi; \
+	 if ! [ -e SDL2-${SDL2_TTF_VERSION} ]; then tar -xf SDL2-devel-${SDL2_TTF_VERSION}.tar.gz; fi
+
+CXXFLAGS = -g3 -Ofast -std=c++14 -D__STDC_CONSTANT_MACROS \
+		   -Wall -Wextra -Wno-deprecated -Wno-deprecated-declarations \
+		   -Wdisabled-optimization -Wctor-dtor-privacy \
+		   -Woverloaded-virtual -Wno-unused -Wno-missing-field-initializers
+
+CXX = x86_64-w64-mingw32-g++-posix
+CXXFLAGS += -Iffmpeg-${FFMPEG_VERSION}/build/include/ \
+	    -ISDL2-${SDL2_VERSION}/x86_64-w64-mingw32/include/ \
+	    -ISDL2-${SDL2_VERSION}/x86_64-w64-mingw32/include/SDL2 \
+	    -ISDL2_ttf-${SDL2_TTF_VERSION}/x86_64-w64-mingw32/include/
+LDLIBS = -Lffmpeg-${FFMPEG_VERSION}/build/lib/ \
+	 -LSDL2-${SDL2_VERSION}/x86_64-w64-mingw32/lib/ \
+	 -LSDL2_ttf-${SDL2_TTF_VERSION}/x86_64-w64-mingw32/lib/ \
+	 -static-libgcc -static-libstdc++ \
+	 -Wl,-Bstatic -lstdc++ -lpthread -lavformat -lavfilter -lavcodec -lavutil -lswresample -lswscale -lpostproc -lSDL2 -lSDL2_ttf \
+	 -Wl,-Bdynamic -lbcrypt -ldinput8 -ldxerr8 -ldxguid -lgdi32 -limagehlp -limm32 -lole32 -loleaut32 -lrpcrt4 -lsecur32 -lsetupapi -lshell32 -lstrmiids -luser32 -lusp10 -luuid -lversion -lwinmm -lws2_32 -lwsock32
+
+src = $(wildcard *.cpp)
+obj = $(src:.cpp=.o)
+dep = $(obj:.o=.d)
+target = video-compare
+
+all: $(target)
+
+$(target): $(obj) ffmpeg_lib sdl2_lib
+	$(CXX) -o $@ $^ $(LDLIBS)
+
+-include $(dep)
+
+%.d: %.cpp
+	@$(CXX) $(CXXFLAGS) $< -MM -MT $(@:.d=.o) >$@
+
+test: $(target)
+	./$(target) -w 800x screenshot_1.jpg screenshot_2.jpg
+
+.PHONY: clean
+clean:
+	$(RM) $(obj) $(target) $(dep)
+
+install: $(target)
+	install -s video-compare $(BINDIR)
